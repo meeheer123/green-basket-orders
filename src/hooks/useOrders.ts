@@ -8,9 +8,35 @@ export function useOrders() {
   return useQuery<Order[]>({
     queryKey: ["orders"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+      // Fetch orders from Supabase
+      const { data: orders, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []) as Order[];
+      
+      // Fetch all order items
+      const { data: orderItems, error: itemsError } = await supabase.from("order_items").select("*");
+      if (itemsError) throw itemsError;
+      
+      // Transform Supabase data to match our Order interface
+      return (orders || []).map(order => ({
+        id: order.id,
+        items: (orderItems || [])
+          .filter(item => item.order_id === order.id)
+          .map(item => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+            pricePerUnit: Number(item.price_per_unit)
+          })),
+        customer: {
+          name: order.customer_name,
+          email: order.customer_email,
+          phone: order.customer_phone,
+          address: order.customer_address
+        },
+        status: order.status as OrderStatus,
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        total: Number(order.total)
+      }));
     },
   });
 }
@@ -20,9 +46,37 @@ export function useOrder(orderId: string) {
   return useQuery<Order | null>({
     queryKey: ["order", orderId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
+      // Fetch order from Supabase
+      const { data: order, error } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
       if (error) throw error;
-      return data as Order | null;
+      if (!order) return null;
+      
+      // Fetch order items
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId);
+      if (itemsError) throw itemsError;
+      
+      // Transform Supabase data to match our Order interface
+      return {
+        id: order.id,
+        items: (orderItems || []).map(item => ({
+          productId: item.product_id,
+          quantity: item.quantity,
+          pricePerUnit: Number(item.price_per_unit)
+        })),
+        customer: {
+          name: order.customer_name,
+          email: order.customer_email,
+          phone: order.customer_phone,
+          address: order.customer_address
+        },
+        status: order.status as OrderStatus,
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        total: Number(order.total)
+      };
     },
     enabled: !!orderId,
   });
